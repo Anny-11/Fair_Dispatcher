@@ -1,6 +1,7 @@
 import streamlit as st
 import time
-from utils.state_manager import initialize_system_state, inject_css, CREDENTIALS
+from utils.state_manager import initialize_system_state, inject_css
+from utils.database import get_db_session, User
 
 st.set_page_config(
     page_title="Fair Dispatcher — Secure Gateway",
@@ -51,34 +52,50 @@ st.markdown("""
     <p style="color:#64748b; font-size:0.78rem; text-transform:uppercase; letter-spacing:1.2px; margin-bottom:24px; font-weight:600;">System Authentication</p>
 """, unsafe_allow_html=True)
 
-with st.form("login_form"):
-    username = st.text_input("Username", placeholder="e.g. admin or alice")
-    password = st.text_input("Password", type="password", placeholder="••••••••")
-    st.markdown("<br>", unsafe_allow_html=True)
-    submitted = st.form_submit_button("Sign In →", use_container_width=True)
+tab_login, tab_register = st.tabs(["Sign In", "Register Driver"])
 
-    if submitted:
-        if username.lower() in CREDENTIALS and CREDENTIALS[username.lower()] == password:
-            st.session_state.authenticated = True
-            if username.lower() == "admin":
-                st.session_state.role = "Administrator"
-                st.session_state.current_user = "Administrative Root"
+with tab_login:
+    with st.form("login_form"):
+        username = st.text_input("Username", placeholder="e.g. admin or alice")
+        password = st.text_input("Password", type="password", placeholder="••••••••")
+        st.markdown("<br>", unsafe_allow_html=True)
+        submitted = st.form_submit_button("Sign In →", use_container_width=True)
+
+        if submitted:
+            db = get_db_session()
+            user = db.query(User).filter(User.username == username.lower()).first()
+            if user and user.password_hash == password:
+                st.session_state.authenticated = True
+                st.session_state.role = user.role
+                st.session_state.current_user = "Administrative Root" if user.role == "Administrator" else username.capitalize()
+                
+                with st.spinner("Authenticating..."):
+                    time.sleep(0.5)
+                if st.session_state.role == "Administrator":
+                    st.switch_page("pages/1_Admin_Command_Center.py")
+                else:
+                    st.switch_page("pages/2_Driver_Portal.py")
             else:
-                st.session_state.role = "Driver"
-                st.session_state.current_user = username.capitalize()
-            with st.spinner("Authenticating..."):
-                time.sleep(0.5)
-            if st.session_state.role == "Administrator":
-                st.switch_page("pages/1_Admin_Command_Center.py")
+                st.error("Invalid credentials. Access denied.")
+            db.close()
+
+with tab_register:
+    with st.form("register_form"):
+        new_username = st.text_input("New Username")
+        new_password = st.text_input("New Password", type="password")
+        st.markdown("<br>", unsafe_allow_html=True)
+        registered = st.form_submit_button("Register Account", use_container_width=True)
+        
+        if registered and len(new_username) > 0 and len(new_password) > 0:
+            db = get_db_session()
+            existing = db.query(User).filter(User.username == new_username.lower()).first()
+            if existing:
+                st.error("Username already exists in dispatch server.")
             else:
-                st.switch_page("pages/2_Driver_Portal.py")
-        else:
-            st.error("Invalid credentials. Access denied.")
+                new_user = User(username=new_username.lower(), password_hash=new_password, role="Driver")
+                db.add(new_user)
+                db.commit()
+                st.success("Registration complete. Please sign in.")
+            db.close()
 
 st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("""
-<div style="text-align:center; margin-top: 24px;">
-    <p style="color: #334155; font-size: 0.78rem;">Demo credentials: admin / admin123 &nbsp;|&nbsp; alice / driver123</p>
-</div>
-""", unsafe_allow_html=True)

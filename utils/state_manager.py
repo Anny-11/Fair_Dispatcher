@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from utils.database import init_db, engine, SessionLocal, User, Driver, Route, Allocation, TokenRequest
 
 PREMIUM_CSS = """
 <style>
@@ -136,43 +137,82 @@ hr { border-color: #2d3148 !important; margin: 28px 0 !important; }
 </style>
 """
 
-CREDENTIALS = {
-    "admin": "admin123",
-    "alice": "driver123",
-    "bob": "driver123",
-    "charlie": "driver123",
-    "david": "driver123"
-}
-
 def inject_css():
     st.markdown(PREMIUM_CSS, unsafe_allow_html=True)
 
+def load_data_to_session():
+    # Helper to sync NeonDB to Pandas for fast Streamlit UI rendering
+    db = SessionLocal()
+    st.session_state.drivers = pd.read_sql("SELECT id as \"Driver_ID\", name as \"Name\", past_workload as \"Past_Workload\", fatigue_score as \"Fatigue_Score\", monthly_tokens as \"Monthly_Tokens\", wage_history as \"Wage_History\", vehicle_capacity_kg as \"Vehicle_Capacity_kg\" FROM drivers", engine)
+    st.session_state.routes = pd.read_sql("SELECT id as \"Route_ID\", deliveries as \"Deliveries\", weight_kg as \"Weight_kg\", urgency as \"Urgency\", traffic as \"Traffic\", distance_km as \"Distance_km\" FROM routes", engine)
+    st.session_state.allocations = pd.read_sql("SELECT driver_name as \"Driver\", route_id as \"Route_ID\", urgency as \"Urgency\", difficulty as \"Difficulty\", est_wage as \"Est_Wage ($)\" FROM allocations", engine)
+    
+    # Load raw dict for tokens
+    reqs = db.query(TokenRequest).all()
+    st.session_state.token_requests = [{"id": r.id, "driver": r.driver_name, "current_route": r.route_id, "difficulty": r.difficulty, "reason": r.reason, "status": r.status} for r in reqs]
+    db.close()
+
+def save_drivers_to_db(df):
+    db = SessionLocal()
+    for _, row in df.iterrows():
+        driver = db.query(Driver).filter(Driver.id == row['Driver_ID']).first()
+        if not driver:
+            driver = Driver(id=row['Driver_ID'], name=row['Name'])
+            db.add(driver)
+        driver.past_workload = float(row['Past_Workload'])
+        driver.fatigue_score = float(row['Fatigue_Score'])
+        driver.monthly_tokens = int(row['Monthly_Tokens'])
+        driver.wage_history = float(row['Wage_History'])
+        driver.vehicle_capacity_kg = float(row['Vehicle_Capacity_kg'])
+    db.commit()
+    db.close()
+
+def save_routes_to_db(df):
+    db = SessionLocal()
+    for _, row in df.iterrows():
+        route = db.query(Route).filter(Route.id == row['Route_ID']).first()
+        if not route:
+            route = Route(id=row['Route_ID'])
+            db.add(route)
+        route.deliveries = int(row['Deliveries'])
+        route.weight_kg = float(row['Weight_kg'])
+        route.urgency = row['Urgency']
+        route.traffic = row['Traffic']
+        route.distance_km = float(row['Distance_km'])
+    db.commit()
+    db.close()
+
+def save_allocations_to_db(df):
+    db = SessionLocal()
+    db.query(Allocation).delete() # Clear old QAOA run
+    alloc_list = []
+    for _, row in df.iterrows():
+        alloc = Allocation(
+            driver_name=row['Driver'],
+            route_id=row['Route_ID'],
+            urgency=row['Urgency'],
+            difficulty=row['Difficulty'],
+            est_wage=float(row['Est_Wage ($)'])
+        )
+        alloc_list.append(alloc)
+    db.add_all(alloc_list)
+    db.commit()
+    db.close()
+
 def initialize_system_state():
+    try:
+        init_db() # Ensure tables exist
+    except Exception as e:
+        print(f"DB Init Error: {e}")
+
     if 'authenticated' not in st.session_state: st.session_state.authenticated = False
     if 'role' not in st.session_state: st.session_state.role = None
     if 'current_user' not in st.session_state: st.session_state.current_user = None
-    if 'token_requests' not in st.session_state: st.session_state.token_requests = []
-    if 'requesting_token' not in st.session_state: st.session_state.requesting_token = False
 
-    if 'drivers' not in st.session_state:
-        st.session_state.drivers = pd.DataFrame({
-            "Driver_ID": ["D1", "D2", "D3", "D4"],
-            "Name": ["Alice", "Bob", "Charlie", "David"],
-            "Past_Workload": [120, 95, 110, 85],
-            "Fatigue_Score": [0.8, 0.4, 0.6, 0.2],
-            "Monthly_Tokens": [4, 5, 2, 5],
-            "Wage_History": [1200, 950, 1100, 850],
-            "Vehicle_Capacity_kg": [300, 100, 400, 200]
-        })
-    if 'routes' not in st.session_state:
-        st.session_state.routes = pd.DataFrame({
-            "Route_ID": ["R1", "R2", "R3", "R4"],
-            "Deliveries": [45, 12, 60, 25],
-            "Weight_kg": [200, 50, 300, 100],
-            "Urgency": ["Normal", "Emergency", "Normal", "Medical"],
-            "Traffic": ["High", "Low", "Medium", "Low"],
-            "Distance_km": [40, 15, 60, 20]
-        })
+    try:
+        load_data_to_session()
+    except Exception as e:
+        print(f"Data Load Error: {e}")
 
 def classify_route(row):
     score = sum([

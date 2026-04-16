@@ -1,4 +1,6 @@
 import streamlit as st
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import plotly.express as px
 from qiskit import QuantumCircuit
@@ -142,8 +144,7 @@ with tab3:
         <div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:1px; color:#475569; font-weight:600; margin-bottom:16px;">Quantum Circuit Topology</div>""", unsafe_allow_html=True)
 
         try:
-            plt.style.use("dark_background")
-            qubits_to_show = min(4, len(st.session_state.drivers))
+            qubits_to_show = min(5, len(st.session_state.drivers) + 1)
             qc = QuantumCircuit(qubits_to_show)
             qc.h(range(qubits_to_show))
             qc.barrier()
@@ -156,13 +157,12 @@ with tab3:
             for i in range(qubits_to_show):
                 qc.rx(beta, i)
             qc.measure_all()
-            fig, ax = plt.subplots(figsize=(7, 2.8))
-            fig.patch.set_facecolor('#1a1d27')
-            ax.set_facecolor('#1a1d27')
-            qc.draw(output='mpl', ax=ax, style={'backgroundcolor': '#1a1d27', 'textcolor': '#c7d2fe'})
-            st.pyplot(fig)
-        except Exception:
-            st.info("Circuit visualizer requires compatible Qiskit backend.")
+            
+            # Using text backend which works identically across all systems
+            circuit_text = qc.draw(output='text')
+            st.code(str(circuit_text), language="text")
+        except Exception as e:
+            st.error(f"Circuit visualizer error: {e}")
 
         st.markdown("</div>", unsafe_allow_html=True)
 

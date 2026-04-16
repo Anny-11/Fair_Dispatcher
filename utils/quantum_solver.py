@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from utils.state_manager import classify_route
+from utils.state_manager import classify_route, save_allocations_to_db
 
 def run_hybrid_qaoa_allocation():
     routes_df = st.session_state.routes.copy()
@@ -8,7 +8,6 @@ def run_hybrid_qaoa_allocation():
     drivers_df = st.session_state.drivers.copy()
     
     allocations = []
-    # Real logic: build QUBO, run QAOA, but here we process the hybrid mock 
     available_drivers = drivers_df.sort_values(by="Past_Workload").to_dict('records')
     
     for _, r in routes_df.iterrows():
@@ -34,5 +33,8 @@ def run_hybrid_qaoa_allocation():
                 "Est_Wage ($)": 0
             })
     
-    st.session_state.allocations = pd.DataFrame(allocations)
-    st.session_state.token_requests = [] # Reset token requests on fresh allocation
+    alloc_df = pd.DataFrame(allocations)
+    st.session_state.allocations = alloc_df
+    
+    # Save the generated manifest dynamically into Postgres
+    save_allocations_to_db(alloc_df)
