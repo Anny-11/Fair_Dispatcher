@@ -4,7 +4,7 @@ from utils.state_manager import (inject_css, classify_route, kpi_card, badge,
                                   section_header, card, save_drivers_to_db, load_data_to_session)
 from utils.database import get_db_session, TokenRequest
 
-st.set_page_config(page_title="Driver Portal · Fair Dispatcher", page_icon="🚚", layout="wide")
+st.set_page_config(page_title="Driver Portal · Fair Dispatcher", page_icon="FD", layout="wide")
 
 if not st.session_state.get('authenticated') or st.session_state.get('role') != "Driver":
     st.switch_page("app.py")
@@ -122,31 +122,31 @@ elif approved_reqs:
 elif denied_reqs:
     st.error("❌  Override denied by dispatch. Original manifest will be enforced.")
 
-# Route Card
-st.markdown(f"""
-<div style="background:#0f111a;border:1px solid #1c2038;border-radius:16px;padding:28px 32px;margin-bottom:20px;position:relative;overflow:hidden;">
-    <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,{dm['color']}88,{dm['color']});"></div>
-
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-        <div>
-            <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:#475569;font-weight:600;margin-bottom:8px;">Active Route Assignment</div>
-            <div style="font-size:2.2rem;font-weight:800;color:#f1f5f9;letter-spacing:-.04em;">Route {assigned_route}</div>
-            <div style="font-size:.875rem;color:#64748b;margin-top:6px;">QAOA-optimized assignment based on fatigue, payload &amp; urgency constraints.</div>
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
-            <div style="background:{dm['bg']};border:1px solid {dm['border']};border-radius:8px;padding:6px 14px;font-size:.78rem;font-weight:700;color:{dm['color']};letter-spacing:.06em;text-transform:uppercase;">{dm['icon']} {assigned_diff}</div>
-            <div style="font-size:.78rem;color:#475569;">Est. Wage: <span style="color:#34d399;font-weight:700;">${assigned_wage}</span></div>
-        </div>
+# Route Card — using Streamlit native components to avoid LaTeX/$ conflicts
+col_left, col_right = st.columns([3, 1])
+with col_left:
+    st.markdown(f"""
+    <div style="background:#0f111a;border:1px solid #1c2038;border-left:3px solid {dm['color']};border-radius:12px;padding:24px 28px;margin-bottom:20px;">
+        <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:#475569;font-weight:600;margin-bottom:10px;">Active Route Assignment</div>
+        <div style="font-size:2.4rem;font-weight:800;color:#f1f5f9;letter-spacing:-.04em;">Route {assigned_route}</div>
+        <div style="font-size:.875rem;color:#64748b;margin-top:8px;">QAOA-optimized — based on fatigue load, payload and urgency constraints.</div>
     </div>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+with col_right:
+    st.markdown(f"""
+    <div style="background:#0f111a;border:1px solid #1c2038;border-radius:12px;padding:20px;text-align:center;margin-bottom:20px;">
+        <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:8px;">Difficulty</div>
+        <div style="background:{dm['bg']};border:1px solid {dm['border']};border-radius:8px;padding:8px 0;font-size:.85rem;font-weight:700;color:{dm['color']};letter-spacing:.06em;text-transform:uppercase;">{dm['icon']} {assigned_diff}</div>
+        <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-top:14px;margin-bottom:4px;">Est. Wage</div>
+        <div style="font-size:1.4rem;font-weight:800;color:#34d399;">USD {assigned_wage}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-# Surge alert
 if assigned_diff == "HIGH" and not pending_reqs:
     st.markdown("""
     <div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:14px 18px;margin-bottom:20px;">
-        🔥 &nbsp;<strong style="color:#fbbf24;">Surge Bonus Active</strong><br>
-        <span style="font-size:.85rem;color:#94a3b8;margin-top:2px;display:block;">Acknowledging this HIGH-difficulty route will award +1 Flexibility Token.</span>
+        <strong style="color:#fbbf24;">Surge Bonus Active</strong><br>
+        <span style="font-size:.85rem;color:#94a3b8;margin-top:2px;display:block;">Acknowledging this HIGH-difficulty route will award +1 Flexibility Token to your wallet.</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -154,17 +154,17 @@ if assigned_diff == "HIGH" and not pending_reqs:
 if not pending_reqs:
     col_a, col_b = st.columns(2, gap="medium")
     with col_a:
-        if st.button("✅  Acknowledge & Lock Manifest", use_container_width=True, type="primary"):
+        if st.button("Acknowledge and Lock Manifest", use_container_width=True, type="primary"):
             if assigned_diff == "HIGH":
                 idx = st.session_state.drivers.index[st.session_state.drivers['Name'].str.lower() == driver_sel.lower()].tolist()
                 if idx:
                     st.session_state.drivers.at[idx[0], 'Monthly_Tokens'] += 1
                     save_drivers_to_db(st.session_state.drivers)
-                st.success("Route confirmed! +1 Flexibility Token credited to your wallet. 💎")
+                st.success("Route confirmed. +1 Flexibility Token has been credited to your wallet.")
             else:
-                st.success("Manifest locked. Have a safe shift! 🚛")
+                st.success("Manifest locked. Have a safe shift.")
     with col_b:
-        if st.button("🔄  Request Route Override", use_container_width=True):
+        if st.button("Request Route Override", use_container_width=True):
             if int(driver_data['Monthly_Tokens']) > 0:
                 if assigned_diff in ['HIGH', 'MEDIUM']:
                     st.session_state.requesting_token = True
@@ -183,7 +183,7 @@ if st.session_state.get('requesting_token', False):
 
     with st.form("token_form"):
         reason = st.text_area("Justification", placeholder="e.g. Cumulative fatigue threshold exceeded, mechanical issue with vehicle…", height=100)
-        submitted = st.form_submit_button("Submit to Dispatch Network →", use_container_width=True)
+        submitted = st.form_submit_button("Submit to Dispatch Network", use_container_width=True)
         if submitted:
             if not reason.strip():
                 st.warning("Please provide a justification.")
@@ -209,7 +209,7 @@ if st.session_state.get('requesting_token', False):
 past_reqs = [r for r in token_requests if r['driver'].lower() == driver_sel.lower() and r['status'] != 'Pending']
 if past_reqs:
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    with st.expander("📋  Override Request History", expanded=False):
+    with st.expander("Override Request History", expanded=False):
         for req in past_reqs:
             status_badge = badge(req['status'])
             st.markdown(f"""
